@@ -1,0 +1,9 @@
+apiVersion: helm.sh/v1
+kind: Chart
+metadata:
+  name: llm-forge
+  description: Helm chart for LLM-Forge vLLM + FastAPI serving
+  type: application
+  version: 0.1.0
+  appVersion: "0.1.0"
+kubeVersion: ">=1.25.0"

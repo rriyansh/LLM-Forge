@@ -1,0 +1,52 @@
+# QLoRA fine-tuning hyperparameters
+model:
+  base_model_id: meta-llama/Meta-Llama-3-8B-Instruct
+  hf_token: ${HF_TOKEN}
+  output_dir: ./checkpoints
+  trust_remote_code: true
+  use_flash_attention_2: true
+
+qlora:
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  bias: none
+  task_type: CAUSAL_LM
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+
+bnb:
+  load_in_4bit: true
+  bnb_4bit_compute_dtype: bfloat16
+  bnb_4bit_quant_type: nf4
+  bnb_4bit_use_double_quant: true
+
+training:
+  per_device_train_batch_size: 4
+  per_device_eval_batch_size: 4
+  gradient_accumulation_steps: 4
+  learning_rate: 2.0e-4
+  num_train_epochs: 3
+  lr_scheduler_type: cosine
+  warmup_ratio: 0.03
+  weight_decay: 0.01
+  fp16: false
+  bf16: true
+  logging_steps: 10
+  save_steps: 500
+  eval_steps: 500
+  save_total_limit: 3
+  seed: 42
+  report_to: wandb
+
+data:
+  train_file: data/processed/train.jsonl
+  val_file: data/processed/val.jsonl
+  max_seq_length: 2048
+  shuffle: true

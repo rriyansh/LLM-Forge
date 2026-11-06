@@ -1,0 +1,29 @@
+services:
+  llm-train:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.train
+    profiles:
+      - train
+    gpu: "all"
+    env_file:
+      - .env
+    volumes:
+      - ./checkpoints:/app/checkpoints
+      - ./logs:/app/logs
+      - ./data:/app/data
+
+  llm-serve:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.serve
+    profiles:
+      - serve
+    gpu: "all"
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models
+      - ./logs:/app/logs

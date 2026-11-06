@@ -1,22 +1,83 @@
-# LLM-Forge: Parameter-Efficient LLM Fine-Tuning and Inference Pipeline
+# LLM-Forge
 
-## System Overview
-LLM-Forge is an end-to-end infrastructure designed for fine-tuning large foundation models on constrained hardware and serving them with high throughput. The pipeline leverages QLoRA for memory-efficient training and vLLM for optimized production inference.
+Production-ready LLM fine-tuning and serving framework built with QLoRA, PEFT, TRL, vLLM, and FastAPI.
 
-## Training Pipeline (QLoRA)
-Training foundation models (e.g., Llama-3 70B) typically requires extensive VRAM. This system implements 4-bit NormalFloat (NF4) quantization via `bitsandbytes` and Low-Rank Adaptation (LoRA). By freezing the base model weights and only updating the injected adapter layers, the VRAM footprint is reduced by approximately 65%, enabling fine-tuning on single-node consumer GPUs.
+## Project structure
 
-## Serving Infrastructure (vLLM)
-Standard Hugging Face inference pipelines suffer from severe memory fragmentation during batch processing. LLM-Forge utilizes **vLLM** with PagedAttention, which allocates Key-Value (KV) cache memory in non-contiguous blocks. This effectively eliminates memory fragmentation and maximizes the number of concurrent requests the GPU can handle.
+```
+├── README.md
+├── LICENSE
+├── .gitignore
+├── .env.example
+├── Makefile
+├── pyproject.toml
+├── requirements.txt
+├── .github/workflows/ci.yml
+├── .github/workflows/cd.yml
+├── configs/
+├── data/
+├── src/
+├── notebooks/
+├── scripts/
+├── tests/
+├── docker/
+├── deployment/
+├── monitoring/
+├── checkpoints/
+└── logs/
+```
 
-## API & Integration
-The inference engine is wrapped in an asynchronous FastAPI service, implementing structured JSON output validation to ensure the LLM responses strictly adhere to predefined downstream schemas.
+## Setup
 
-## Tech Stack
-- **Training:** Hugging Face (Transformers, PEFT, TRL), bitsandbytes
-- **Inference:** vLLM, CUDA 12.x
-- **Backend:** FastAPI, Uvicorn
+```bash
+# Clone the repository
+git clone https://github.com/rriyansh/LLM-Forge.git
+cd LLM-Forge
 
-## Benchmarks
-- **Training Efficiency:** Successfully fine-tuned Llama-3 8B on a single 24GB VRAM GPU.
-- **Inference Throughput:** Sustained 45 tokens/sec per GPU using PagedAttention (a 3.2x throughput increase over baseline implementations).
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate
+
+# Install dependencies
+make install
+
+# Copy environment template and fill in values
+cp .env.example .env
+```
+
+## Usage
+
+```bash
+# Prepare data
+python -m src.data.data_prep
+
+# Fine-tune with QLoRA
+make train
+
+# Merge LoRA adapter into base model
+python -m src.models.merge_adapter
+
+# Evaluate the model
+python -m src.evaluation.evaluate
+
+# Start the serving API
+make serve
+
+# Run smoke test
+bash scripts/test_api.sh
+```
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `make install` | Install Python dependencies |
+| `make lint` | Run ruff + black checks |
+| `make test` | Run pytest |
+| `make train` | Start QLoRA fine-tuning |
+| `make serve` | Start vLLM + FastAPI server |
+| `make format` | Format code with black |
+
+## License
+
+MIT License. See [LICENSE](LICENSE).

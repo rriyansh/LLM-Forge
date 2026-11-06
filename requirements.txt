@@ -1,12 +1,28 @@
-torch>=2.1
-transformers>=4.44
-peft>=0.12
-trl>=0.9
-bitsandbytes>=0.43
-datasets
-accelerate
-wandb
-vllm
-fastapi
-uvicorn
-pydantic
+# Core training & serving dependencies
+torch>=2.3.0,<3.0.0
+transformers>=4.44.0,<5.0.0
+peft>=0.12.0
+trl>=0.9.0
+accelerate>=0.33.0
+datasets>=2.19.0
+sentencepiece>=0.2.0
+protobuf>=4.25.0
+
+# Serving
+vllm>=0.5.0
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+pydantic>=2.5.0
+python-multipart>=0.0.6
+
+# Tracking & utils
+wandb>=0.16.0
+pyyaml>=6.0.1
+rich>=13.0.0
+tqdm>=4.66.0
+requests>=2.31.0
+
+# Evaluation
+rouge-score>=0.1.2
+evaluate>=0.4.0
+nltk>=3.8.0

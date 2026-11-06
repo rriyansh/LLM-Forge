@@ -1,0 +1,29 @@
+groups:
+  - name: llm-forge-alerts
+    rules:
+      - alert: HighInferenceLatency
+        expr: histogram_quantile(0.95, rate(llm_request_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High inference latency detected"
+          description: "p95 latency is above 2s for the last 5 minutes."
+
+      - alert: HighErrorRate
+        expr: sum(rate(llm_requests_total{status=~"5.."}[5m])) / sum(rate(llm_requests_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High error rate on LLM serving"
+          description: "Error rate is above 5% for the last 5 minutes."
+
+      - alert: GPUMemoryHigh
+        expr: avg by (gpu) (nvidia_gpu_memory_used_bytes / nvidia_gpu_memory_total_bytes) > 0.9
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "GPU memory usage is high"
+          description: "GPU memory usage is above 90% for the last 10 minutes."

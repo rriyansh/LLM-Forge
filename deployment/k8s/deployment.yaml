@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-forge-serve
+  namespace: llm-forge
+  labels:
+    app: llm-forge-serve
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: llm-forge-serve
+  template:
+    metadata:
+      labels:
+        app: llm-forge-serve
+    spec:
+      containers:
+        - name: llm-forge-serve
+          image: ghcr.io/rriyansh/llm-forge-serve:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+              memory: "32Gi"
+            requests:
+              nvidia.com/gpu: 1
+              memory: "16Gi"
+          env:
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: llm-forge-secrets
+                  key: api-key
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: llm-forge-secrets
+                  key: hf-token
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
