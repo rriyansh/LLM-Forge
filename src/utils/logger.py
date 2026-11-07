@@ -1,31 +1,36 @@
-"""Structured logging setup."""
-
+"""Structured JSON logging. No secrets, no PII in logs."""
 from __future__ import annotations
 
 import logging
-import logging.config
-from pathlib import Path
-from typing import Any
+import os
+import sys
 
-try:
-    import yaml  # type: ignore
-except Exception:  # pragma: no cover
-    yaml = None
+import structlog
 
 
-def setup_logging(config_path: str | Path | None = None) -> None:
-    """Configure logging from a YAML config or fall back to basic config."""
-    if config_path is not None and yaml is not None:
-        with open(config_path, "r", encoding="utf-8") as fh:
-            config = yaml.safe_load(fh)
-        logging.config.dictConfig(config)
-    else:
-        logging.basicConfig(
-            level=logging.INFO,
-            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        )
+def configure_logging() -> None:
+    level = os.getenv("LOG_LEVEL", "INFO").upper()
+    logging.basicConfig(
+        format="%(message)s",
+        stream=sys.stdout,
+        level=getattr(logging, level, logging.INFO),
+    )
+    structlog.configure(
+        processors=[
+            structlog.contextvars.merge_contextvars,
+            structlog.processors.add_log_level,
+            structlog.processors.TimeStamper(fmt="iso", utc=True),
+            structlog.processors.StackInfoRenderer(),
+            structlog.processors.format_exc_info,
+            structlog.processors.JSONRenderer(),
+        ],
+        wrapper_class=structlog.make_filtering_bound_logger(
+            getattr(logging, level, logging.INFO)
+        ),
+        logger_factory=structlog.PrintLoggerFactory(),
+        cache_logger_on_first_use=True,
+    )
 
 
-def get_logger(name: str) -> logging.Logger:
-    """Return a logger for the given name."""
-    return logging.getLogger(name)
+def get_logger(name: str) -> structlog.stdlib.BoundLogger:
+    return structlog.get_logger(name)
