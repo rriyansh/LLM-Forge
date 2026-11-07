@@ -1,42 +1,48 @@
-.PHONY: install lint test format train serve train-docker serve-docker down
+.PHONY: help install install-dev lint format test train serve docker-train docker-serve clean
 
-PYTHON ?= python
-PIP ?= pip
+help:
+	@echo "LLM-Forge - available commands:"
+	@echo "  make install        Install production deps"
+	@echo "  make install-dev    Install dev deps"
+	@echo "  make lint           Run ruff + mypy"
+	@echo "  make format         Run black + ruff --fix"
+	@echo "  make test           Run pytest"
+	@echo "  make train          Run QLoRA training"
+	@echo "  make serve          Start FastAPI + vLLM"
+	@echo "  make docker-serve   Build + run serving container"
 
 install:
-	$(PIP) install -r requirements.txt
+	pip install -r requirements.txt
+
+install-dev:
+	pip install -r requirements-dev.txt
+	pre-commit install
 
 lint:
-	ruff check src tests scripts
-	black --check src tests scripts
+	ruff check src tests
+	mypy src
 
 format:
-	black src tests scripts
-	ruff check --fix src tests scripts
+	black src tests
+	ruff check --fix src tests
 
 test:
-	$(PYTHON) -m pytest tests -v
+	pytest tests -v --cov=src
 
 train:
-	WANDB_PROJECT=llm-forge $(PYTHON) -m src.models.qlora_trainer --config configs/training_config.yaml
-
-merge:
-	$(PYTHON) -m src.models.merge_adapter --config configs/training_config.yaml
-
-evaluate:
-	$(PYTHON) -m src.evaluation.evaluate --config configs/training_config.yaml
+	bash scripts/run_training.sh
 
 serve:
 	bash scripts/run_serving.sh
 
-prepare-data:
-	$(PYTHON) -m src.data.data_prep
+docker-train:
+	docker build -f docker/Dockerfile.train -t llm-forge:train .
 
-train-docker:
-	docker compose -f docker/docker-compose.yml --profile train up --build llm-train
+docker-serve:
+	docker build -f docker/Dockerfile.serve -t llm-forge:serve .
+	docker run --gpus all --env-file .env -p 8000:8000 llm-forge:serve
 
-serve-docker:
-	docker compose -f docker/docker-compose.yml --profile serve up --build llm-serve
-
-down:
-	docker compose -f docker/docker-compose.yml down
+clean:
+	find . -type d -name __pycache__ -exec rm -rf {} +
+	find . -type f -name "*.pyc" -delete
+	rm -rf .pytest_cache .mypy_cache .ruff_cache .coverage htmlcov
