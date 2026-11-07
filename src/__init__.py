@@ -1,3 +1,3 @@
-"""LLM-Forge package."""
+"""LLM-Forge: production-grade LLM fine-tuning and serving pipeline."""
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
