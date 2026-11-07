@@ -1,17 +1,18 @@
-# QLoRA fine-tuning hyperparameters
 model:
-  base_model_id: meta-llama/Meta-Llama-3-8B-Instruct
-  hf_token: ${HF_TOKEN}
-  output_dir: ./checkpoints
-  trust_remote_code: true
-  use_flash_attention_2: true
+  id: "meta-llama/Meta-Llama-3-8B"
+  torch_dtype: "bfloat16"
+  trust_remote_code: false
 
-qlora:
+quantization:
+  load_in_4bit: true
+  bnb_4bit_quant_type: "nf4"
+  bnb_4bit_compute_dtype: "bfloat16"
+  bnb_4bit_use_double_quant: true
+
+lora:
   r: 16
-  lora_alpha: 32
-  lora_dropout: 0.05
-  bias: none
-  task_type: CAUSAL_LM
+  alpha: 32
+  dropout: 0.05
   target_modules:
     - q_proj
     - k_proj
@@ -21,32 +22,23 @@ qlora:
     - up_proj
     - down_proj
 
-bnb:
-  load_in_4bit: true
-  bnb_4bit_compute_dtype: bfloat16
-  bnb_4bit_quant_type: nf4
-  bnb_4bit_use_double_quant: true
-
 training:
-  per_device_train_batch_size: 4
-  per_device_eval_batch_size: 4
-  gradient_accumulation_steps: 4
+  output_dir: "./checkpoints"
+  num_train_epochs: 2
+  per_device_train_batch_size: 2
+  gradient_accumulation_steps: 8
   learning_rate: 2.0e-4
-  num_train_epochs: 3
-  lr_scheduler_type: cosine
-  warmup_ratio: 0.03
-  weight_decay: 0.01
-  fp16: false
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.05
   bf16: true
   logging_steps: 10
-  save_steps: 500
-  eval_steps: 500
-  save_total_limit: 3
-  seed: 42
-  report_to: wandb
-
-data:
-  train_file: data/processed/train.jsonl
-  val_file: data/processed/val.jsonl
+  save_strategy: "epoch"
+  save_total_limit: 2
   max_seq_length: 2048
-  shuffle: true
+  packing: true
+  gradient_checkpointing: true
+  optim: "paged_adamw_8bit"
+
+wandb:
+  project: "llm-forge"
+  run_name: "llama3-8b-qlora"
