@@ -1,38 +1,26 @@
-"""Dataset loading from JSONL and Hugging Face datasets."""
-
+"""Dataset loading with schema validation."""
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+
+from datasets import Dataset, load_dataset
+from pydantic import BaseModel, Field
 
 
-def load_jsonl(path: str | Path) -> list[dict[str, Any]]:
-    """Load a JSONL file into a list of dictionaries."""
-    records: list[dict[str, Any]] = []
+class AlpacaExample(BaseModel):
+    instruction: str = Field(..., min_length=1)
+    input: str = ""
+    output: str = Field(..., min_length=1)
+
+
+def load_jsonl_dataset(path: str | Path) -> Dataset:
     path = Path(path)
-    with open(path, "r", encoding="utf-8") as fh:
-        for line in fh:
-            line = line.strip()
-            if line:
-                import json
-
-                records.append(json.loads(line))
-    return records
-
-
-def load_hf_dataset(dataset_name: str, split: str = "train", **kwargs: Any) -> Any:
-    """Load a dataset from the Hugging Face Hub."""
-    from datasets import load_dataset
-
-    return load_dataset(dataset_name, split=split, **kwargs)
-
-
-def save_jsonl(records: list[dict[str, Any]], path: str | Path) -> None:
-    """Save a list of dictionaries to a JSONL file."""
-    import json
-
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as fh:
-        for record in records:
-            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+    if not path.is_file():
+        raise FileNotFoundError(f"Dataset file not found: {path}")
+    ds = load_dataset("json", data_files=str(path), split="train")
+    if len(ds) == 0:
+        raise ValueError("Dataset is empty")
+    # validate a sample of rows
+    for i, row in enumerate(ds.select(range(min(50, len(ds))))):
+        AlpacaExample(**{k: row.get(k, "") for k in ("instruction", "input", "output")})
+    return ds
