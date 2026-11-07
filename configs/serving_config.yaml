@@ -1,28 +1,22 @@
-# vLLM engine settings for production inference
-model:
-  model: /models/llama-3-8b
-  trust_remote_code: true
-  dtype: auto
-
 engine:
   max_model_len: 4096
-  gpu_memory_utilization: 0.90
+  gpu_memory_utilization: 0.85
   tensor_parallel_size: 1
-  pipeline_parallel_size: 1
-  swap_space: 4
-  max_num_seqs: 256
-  max_num_batched_tokens: 4096
+  max_num_seqs: 64
+  dtype: "bfloat16"
+  trust_remote_code: false
   enable_prefix_caching: true
+  enable_chunked_prefill: true
 
-sampling:
-  temperature: 0.7
-  top_p: 0.9
-  top_k: 50
-  max_tokens: 512
-  repetition_penalty: 1.1
+generation:
+  default_temperature: 0.7
+  default_top_p: 0.95
+  default_max_tokens: 512
+  max_max_tokens: 4096
+  stop_sequences: ["<|eot_id|>", "</s>"]
 
-server:
-  host: 0.0.0.0
-  port: 8000
-  workers: 1
-  api_key: ${API_KEY}
+security:
+  rate_limit_per_minute: 60
+  max_request_bytes: 1048576
+  request_timeout_seconds: 60
+  enable_pii_redaction: true
