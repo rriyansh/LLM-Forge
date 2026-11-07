@@ -1,130 +1,116 @@
-"""QLoRA fine-tuning main logic (PEFT + TRL)."""
-
+"""QLoRA fine-tuning entrypoint. Secure, configurable, W&B tracked."""
 from __future__ import annotations
 
-import argparse
+import os
+import sys
 from pathlib import Path
-from typing import Any
 
-try:
-    import yaml  # type: ignore
-except Exception:  # pragma: no cover
-    yaml = None
+import torch
+from datasets import Dataset
+from peft import LoraConfig, prepare_model_for_kbit_training
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from trl import SFTConfig, SFTTrainer
 
-try:
-    import torch  # type: ignore
-    from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig  # type: ignore
-    from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training  # type: ignore
-    from trl import SFTTrainer, SFTConfig  # type: ignore
-    from datasets import load_dataset  # type: ignore
-except Exception:  # pragma: no cover - heavy deps may not be installed
-    torch = None  # type: ignore
-    AutoModelForCausalLM = None  # type: ignore
-    AutoTokenizer = None  # type: ignore
-    BitsAndBytesConfig = None  # type: ignore
-    LoraConfig = None  # type: ignore
-    get_peft_model = None  # type: ignore
-    prepare_model_for_kbit_training = None  # type: ignore
-    SFTTrainer = None  # type: ignore
-    SFTConfig = None  # type: ignore
-    load_dataset = None  # type: ignore
+from src.data.loader import load_jsonl_dataset
+from src.data.preprocessor import format_example
+from src.utils.config_parser import load_training_config
+from src.utils.logger import configure_logging, get_logger
+
+log = get_logger(__name__)
 
 
-def load_config(path: str | Path) -> dict[str, Any]:
-    if yaml is None:
-        raise RuntimeError("PyYAML is required to load configs")
-    with open(path, "r", encoding="utf-8") as fh:
-        return yaml.safe_load(fh)
+def _dtype_from_str(name: str) -> torch.dtype:
+    return {"bfloat16": torch.bfloat16, "float16": torch.float16, "float32": torch.float32}[name]
 
 
-def train(config_path: str | Path) -> None:
-    if torch is None:
-        raise RuntimeError("torch/transformers/peft/trl are required for training")
-
-    config = load_config(config_path)
-    model_cfg = config.get("model", {})
-    qlora_cfg = config.get("qlora", {})
-    bnb_cfg = config.get("bnb", {})
-    train_cfg = config.get("training", {})
-    data_cfg = config.get("data", {})
-
-    tokenizer = AutoTokenizer.from_pretrained(
-        model_cfg["base_model_id"],
-        token=model_cfg.get("hf_token"),
-        trust_remote_code=model_cfg.get("trust_remote_code", False),
+def build_model(cfg) -> tuple[AutoModelForCausalLM, AutoTokenizer]:
+    log.info("loading_model", model_id=cfg.model.id)
+    bnb = BitsAndBytesConfig(
+        load_in_4bit=cfg.quantization.load_in_4bit,
+        bnb_4bit_quant_type=cfg.quantization.bnb_4bit_quant_type,
+        bnb_4bit_compute_dtype=_dtype_from_str(cfg.quantization.bnb_4bit_compute_dtype),
+        bnb_4bit_use_double_quant=cfg.quantization.bnb_4bit_use_double_quant,
     )
+    tokenizer = AutoTokenizer.from_pretrained(cfg.model.id, trust_remote_code=cfg.model.trust_remote_code)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
-
-    quantization_config = BitsAndBytesConfig(
-        load_in_4bit=bnb_cfg.get("load_in_4bit", True),
-        bnb_4bit_compute_dtype=getattr(torch, bnb_cfg.get("bnb_4bit_compute_dtype", "bfloat16")),
-        bnb_4bit_quant_type=bnb_cfg.get("bnb_4bit_quant_type", "nf4"),
-        bnb_4bit_use_double_quant=bnb_cfg.get("bnb_4bit_use_double_quant", True),
-    )
-
     model = AutoModelForCausalLM.from_pretrained(
-        model_cfg["base_model_id"],
-        quantization_config=quantization_config,
+        cfg.model.id,
+        quantization_config=bnb,
         device_map="auto",
-        token=model_cfg.get("hf_token"),
-        trust_remote_code=model_cfg.get("trust_remote_code", False),
-        use_flash_attention_2=model_cfg.get("use_flash_attention_2", False),
+        torch_dtype=_dtype_from_str(cfg.model.torch_dtype),
+        trust_remote_code=cfg.model.trust_remote_code,
     )
-    model = prepare_model_for_kbit_training(model)
-
-    peft_config = LoraConfig(
-        r=qlora_cfg.get("r", 16),
-        lora_alpha=qlora_cfg.get("lora_alpha", 32),
-        lora_dropout=qlora_cfg.get("lora_dropout", 0.05),
-        bias=qlora_cfg.get("bias", "none"),
-        task_type=qlora_cfg.get("task_type", "CAUSAL_LM"),
-        target_modules=qlora_cfg.get("target_modules", None),
+    model = prepare_model_for_kbit_training(
+        model, use_gradient_checkpointing=cfg.training.gradient_checkpointing
     )
-    model = get_peft_model(model, peft_config)
+    return model, tokenizer
 
-    train_dataset = load_dataset("json", data_files=data_cfg["train_file"], split="train")
-    val_dataset = load_dataset("json", data_files=data_cfg["val_file"], split="train")
 
-    sft_config = SFTConfig(
-        output_dir=model_cfg.get("output_dir", "./checkpoints"),
-        per_device_train_batch_size=train_cfg.get("per_device_train_batch_size", 4),
-        per_device_eval_batch_size=train_cfg.get("per_device_eval_batch_size", 4),
-        gradient_accumulation_steps=train_cfg.get("gradient_accumulation_steps", 4),
-        learning_rate=train_cfg.get("learning_rate", 2e-4),
-        num_train_epochs=train_cfg.get("num_train_epochs", 3),
-        lr_scheduler_type=train_cfg.get("lr_scheduler_type", "cosine"),
-        warmup_ratio=train_cfg.get("warmup_ratio", 0.03),
-        weight_decay=train_cfg.get("weight_decay", 0.01),
-        bf16=train_cfg.get("bf16", True),
-        logging_steps=train_cfg.get("logging_steps, 10", 10),
-        save_steps=train_cfg.get("save_steps", 500),
-        eval_steps=train_cfg.get("eval_steps", 500),
-        save_total_limit=train_cfg.get("save_total_limit", 3),
-        seed=train_cfg.get("seed", 42),
-        report_to=train_cfg.get("report_to", "wandb"),
-        max_seq_length=data_cfg.get("max_seq_length", 2048),
+def main(data_path: str = "data/processed/train.jsonl") -> None:
+    configure_logging()
+    cfg = load_training_config()
+
+    if not os.getenv("WANDB_API_KEY"):
+        log.warning("wandb_api_key_missing", note="Set WANDB_API_KEY for tracking")
+        report_to: str | list[str] = "none"
+    else:
+        report_to = "wandb"
+        os.environ["WANDB_PROJECT"] = cfg.wandb.project
+
+    ds: Dataset = load_jsonl_dataset(data_path)
+    ds = ds.map(format_example, remove_columns=[c for c in ds.column_names if c != "text"])
+
+    model, tokenizer = build_model(cfg)
+
+    peft_cfg = LoraConfig(
+        r=cfg.lora.r,
+        lora_alpha=cfg.lora.alpha,
+        lora_dropout=cfg.lora.dropout,
+        bias="none",
+        task_type="CAUSAL_LM",
+        target_modules=cfg.lora.target_modules,
+    )
+
+    out_dir = Path(cfg.training.output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    sft_cfg = SFTConfig(
+        output_dir=str(out_dir),
+        num_train_epochs=cfg.training.num_train_epochs,
+        per_device_train_batch_size=cfg.training.per_device_train_batch_size,
+        gradient_accumulation_steps=cfg.training.gradient_accumulation_steps,
+        learning_rate=cfg.training.learning_rate,
+        lr_scheduler_type=cfg.training.lr_scheduler_type,
+        warmup_ratio=cfg.training.warmup_ratio,
+        bf16=cfg.training.bf16,
+        logging_steps=cfg.training.logging_steps,
+        save_strategy=cfg.training.save_strategy,
+        save_total_limit=cfg.training.save_total_limit,
+        max_seq_length=cfg.training.max_seq_length,
+        packing=cfg.training.packing,
+        gradient_checkpointing=cfg.training.gradient_checkpointing,
+        optim=cfg.training.optim,
+        report_to=report_to,
+        run_name=cfg.wandb.run_name,
     )
 
     trainer = SFTTrainer(
         model=model,
-        args=sft_config,
-        train_dataset=train_dataset,
-        eval_dataset=val_dataset,
-        tokenizer=tokenizer,
-        dataset_text_field="text",
+        args=sft_cfg,
+        train_dataset=ds,
+        peft_config=peft_cfg,
+        processing_class=tokenizer,
     )
+
+    log.info("training_start", rows=len(ds))
     trainer.train()
-    trainer.save_model(model_cfg.get("output_dir", "./checkpoints"))
-    tokenizer.save_pretrained(model_cfg.get("output_dir", "./checkpoints"))
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description="QLoRA fine-tuning")
-    parser.add_argument("--config", required=True, help="Path to training config YAML")
-    args = parser.parse_args()
-    train(args.config)
+    final_path = out_dir / "final"
+    trainer.save_model(str(final_path))
+    tokenizer.save_pretrained(str(final_path))
+    log.info("training_complete", path=str(final_path))
 
 
 if __name__ == "__main__":
-    main()
+    data_arg = sys.argv[1] if len(sys.argv) > 1 else "data/processed/train.jsonl"
+    main(data_arg)
