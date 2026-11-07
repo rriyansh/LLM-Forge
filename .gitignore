@@ -1,76 +1,26 @@
-# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
-*$py.class
-
-# C extensions
-*.so
-
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-parts/
-sdist/
-var/
-wheels/
-pip-wheel-metadata/
-share/python-wheels/
 *.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# Virtual environments
 .venv/
 venv/
-ENV/
-env/
-.venv*/
-
-# IDE / editors
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-.DS_Store
-
-# Environment files
 .env
 .env.local
-.env.*.local
-
-# Data / artifacts
-data/raw/*
-data/processed/*.jsonl
-!data/raw/.gitkeep
-!data/processed/.gitkeep
-checkpoints/*
+*.log
 logs/*
-!checkpoints/.gitkeep
 !logs/.gitkeep
-
-# Notebook checkpoints
-.ipynb_checkpoints
-
-# Pyre / mypy
-.mypy_cache/
-.dmypy.json
-pyre/
-
-# Testing
+checkpoints/*
+!checkpoints/.gitkeep
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .coverage
 htmlcov/
-.tox/
-.nox/
-coverage.xml
-
-# macOS
+wandb/
 .DS_Store
-._*
+*.safetensors
+*.bin
+*.pt
