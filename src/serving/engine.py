@@ -1,41 +1,91 @@
-"""vLLM AsyncLLMEngine wrapper."""
-
+"""vLLM async engine wrapper."""
 from __future__ import annotations
 
-from typing import Any
+import asyncio
+import uuid
+from typing import AsyncIterator
 
-try:
-    from vllm import AsyncLLMEngine  # type: ignore
-    from vllm.engine.arg_utils import AsyncEngineArgs  # type: ignore
-except Exception:  # pragma: no cover
-    AsyncLLMEngine = Any  # type: ignore
-    AsyncEngineArgs = Any  # type: ignore
+from vllm import SamplingParams
+from vllm.engine.arg_utils import AsyncEngineArgs
+from vllm.v1.engine.async_llm import AsyncLLM
+
+from src.utils.config_parser import FullServingConfig, get_env
+from src.utils.logger import get_logger
+
+log = get_logger(__name__)
 
 
-class vLLMEngine:
-    """Wrapper around vLLM AsyncLLMEngine for text generation."""
+class LLMEngine:
+    """Thread-safe-ish wrapper around vLLM AsyncLLM."""
 
-    def __init__(self, model: str, **kwargs: Any) -> None:
-        self.model = model
-        self.kwargs = kwargs
-        self.engine: Any = None
+    def __init__(self, cfg: FullServingConfig) -> None:
+        self._cfg = cfg
+        self._engine: AsyncLLM | None = None
+        self._lock = asyncio.Lock()
 
-    async def start(self) -> None:
-        if AsyncLLMEngine is None:
-            raise RuntimeError("vLLM is required for serving")
-        engine_args = AsyncEngineArgs(model=self.model, **self.kwargs)
-        self.engine = AsyncLLMEngine.from_engine_args(engine_args)
-
-    async def generate(self, prompt: str, sampling_params: dict[str, Any]) -> str:
-        if self.engine is None:
-            await self.start()
-        from vllm import SamplingParams  # type: ignore
-
-        params = SamplingParams(**sampling_params)
-        request_id = "0"
-        async for output in self.engine.generate(prompt, params, request_id):
-            pass
-        return output.outputs[0].text
+    async def start(self, model_path: str) -> None:
+        async with self._lock:
+            if self._engine is not None:
+                return
+            model_path = model_path or get_env("MODEL_ID", required=True)
+            log.info("engine_starting", model=model_path)
+            args = AsyncEngineArgs(
+                model=model_path,
+                max_model_len=self._cfg.engine.max_model_len,
+                gpu_memory_utilization=self._cfg.engine.gpu_memory_utilization,
+                tensor_parallel_size=self._cfg.engine.tensor_parallel_size,
+                max_num_seqs=self._cfg.engine.max_num_seqs,
+                dtype=self._cfg.engine.dtype,
+                trust_remote_code=self._cfg.engine.trust_remote_code,
+                enable_prefix_caching=self._cfg.engine.enable_prefix_caching,
+                enable_chunked_prefill=self._cfg.engine.enable_chunked_prefill,
+            )
+            self._engine = AsyncLLM.from_engine_args(args)
+            log.info("engine_ready")
 
     async def stop(self) -> None:
-        self.engine = None
+        async with self._lock:
+            self._engine = None
+            log.info("engine_stopped")
+
+    @property
+    def ready(self) -> bool:
+        return self._engine is not None
+
+    async def generate(
+        self,
+        prompt: str,
+        *,
+        temperature: float,
+        top_p: float,
+        max_tokens: int,
+        stop: list[str],
+    ) -> tuple[str, int, int, str, str]:
+        if self._engine is None:
+            raise RuntimeError("Engine not initialized")
+
+        sampling = SamplingParams(
+            temperature=temperature,
+            top_p=top_p,
+            max_tokens=max_tokens,
+            stop=stop or None,
+        )
+        request_id = f"req-{uuid.uuid4().hex}"
+        final = None
+        async for out in self._engine.generate(prompt, sampling, request_id):
+            final = out
+        if final is None or not final.outputs:
+            return "", 0, 0, "error", request_id
+
+        o = final.outputs[0]
+        return (
+            o.text,
+            len(final.prompt_token_ids or []),
+            len(o.token_ids or []),
+            o.finish_reason or "stop",
+            request_id,
+        )
+
+
+# Module-level singleton (initialized by app lifespan)
+engine = LLMEngine
