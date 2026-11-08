@@ -1,74 +1,57 @@
-"""Generate and chat/completions endpoints."""
-
+"""Generation routes with sanitization + injection detection."""
 from __future__ import annotations
 
-import time
-import uuid
-from typing import Any
+import asyncio
+import os
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
-from src.serving.engine import vLLMEngine
-from src.serving.schemas import (
-    ChatCompletionRequest,
-    ChatCompletionResponse,
-    GenerateRequest,
-    GenerateResponse,
-)
+from src.serving.engine import LLMEngine
+from src.serving.schemas import GenerateRequest, GenerateResponse
+from src.utils.logger import get_logger
+from src.utils.security import detect_prompt_injection, redact_pii, sanitize_text
 
+log = get_logger(__name__)
 router = APIRouter()
 
-engine = vLLMEngine(model="/models/llama-3-8b")
 
-
-def get_engine() -> vLLMEngine:
-    return engine
-
-
-@router.on_event("startup")
-async def startup() -> None:
-    await engine.start()
+def _engine(request: Request) -> LLMEngine:
+    eng = getattr(request.app.state, "engine", None)
+    if eng is None or not eng.ready:
+        raise HTTPException(status_code=503, detail="model not ready")
+    return eng
 
 
 @router.post("/generate", response_model=GenerateResponse)
-async def generate(
-    request: GenerateRequest, eng: vLLMEngine = Depends(get_engine)
-) -> GenerateResponse:
-    sampling_params = {
-        "max_tokens": request.max_tokens,
-        "temperature": request.temperature,
-        "top_p": request.top_p,
-        "top_k": request.top_k,
-        "repetition_penalty": request.repetition_penalty,
-    }
-    text = await eng.generate(request.prompt, sampling_params)
+async def generate(req: GenerateRequest, request: Request) -> GenerateResponse:
+    eng = _engine(request)
+
+    prompt = sanitize_text(req.prompt)
+    if detect_prompt_injection(prompt):
+        log.warning("prompt_injection_blocked", ip=request.client.host if request.client else "unknown")
+        raise HTTPException(status_code=400, detail="prompt rejected by safety filter")
+
+    if os.getenv("ENABLE_PII_REDACTION", "true").lower() == "true":
+        prompt = redact_pii(prompt)
+
+    timeout = float(os.getenv("REQUEST_TIMEOUT_SECONDS", "60"))
+    try:
+        text, tin, tout, finish, rid = await asyncio.wait_for(
+            eng.generate(
+                prompt,
+                temperature=req.temperature,
+                top_p=req.top_p,
+                max_tokens=req.max_tokens,
+                stop=req.stop,
+            ),
+            timeout=timeout,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="generation timeout") from None
+    except Exception as e:  # noqa: BLE001
+        log.error("generation_failed", error=str(e))
+        raise HTTPException(status_code=500, detail="generation failed") from e
+
     return GenerateResponse(
-        generated_text=text,
-        model=eng.model,
-        usage={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-    )
-
-
-@router.post("/chat/completions", response_model=ChatCompletionResponse)
-async def chat_completions(
-    request: ChatCompletionRequest, eng: vLLMEngine = Depends(get_engine)
-) -> ChatCompletionResponse:
-    prompt = "\n".join(f"{m.role}: {m.content}" for m in request.messages)
-    sampling_params = {
-        "max_tokens": request.max_tokens,
-        "temperature": request.temperature,
-        "top_p": request.top_p,
-    }
-    text = await eng.generate(prompt, sampling_params)
-    return ChatCompletionResponse(
-        id=f"chatcmpl-{uuid.uuid4().hex}",
-        model=request.model,
-        choices=[
-            {
-                "index": 0,
-                "message": {"role": "assistant", "content": text},
-                "finish_reason": "stop",
-            }
-        ],
-        usage={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        text=text, tokens_in=tin, tokens_out=tout, finish_reason=finish, request_id=rid
     )
