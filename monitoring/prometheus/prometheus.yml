@@ -3,21 +3,13 @@ global:
   evaluation_interval: 15s
 
 scrape_configs:
-  - job_name: "llm-forge-serve"
-    static_configs:
-      - targets: ["llm-forge-serve.llm-forge.svc.cluster.local:8000"]
+  - job_name: llm-forge
     metrics_path: /metrics
-    scrape_interval: 10s
-
-  - job_name: "vllm"
     static_configs:
-      - targets: ["vllm.llm-forge.svc.cluster.local:8000"]
-    scrape_interval: 10s
+      - targets: ["llm-forge:8000"]
+  - job_name: vllm-engine
+    static_configs:
+      - targets: ["llm-forge:8001"]
 
-  - job_name: "kubernetes-nodes"
-    kubernetes_sd_configs:
-      - role: node
-    relabel_configs:
-      - source_labels: [__meta_kubernetes_node_name]
-        target_label: __address__
-        replacement: kubernetes.default.svc.cluster.local:443
+rule_files:
+  - "/etc/prometheus/alert_rules.yml"
