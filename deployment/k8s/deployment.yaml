@@ -1,53 +1,61 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: llm-forge-serve
-  namespace: llm-forge
-  labels:
-    app: llm-forge-serve
+  name: llm-forge
+  labels: { app: llm-forge }
 spec:
   replicas: 1
   selector:
-    matchLabels:
-      app: llm-forge-serve
+    matchLabels: { app: llm-forge }
   template:
     metadata:
-      labels:
-        app: llm-forge-serve
+      labels: { app: llm-forge }
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
       containers:
-        - name: llm-forge-serve
-          image: ghcr.io/rriyansh/llm-forge-serve:latest
+        - name: api
+          image: ghcr.io/yourorg/llm-forge:1.0.0
           imagePullPolicy: IfNotPresent
-          ports:
-            - containerPort: 8000
+          ports: [{ containerPort: 8000, name: http }]
+          envFrom:
+            - secretRef: { name: llm-forge-secrets }
+            - configMapRef: { name: llm-forge-config }
           resources:
             limits:
               nvidia.com/gpu: 1
               memory: "32Gi"
+              cpu: "8"
             requests:
-              nvidia.com/gpu: 1
-              memory: "16Gi"
-          env:
-            - name: API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: llm-forge-secrets
-                  key: api-key
-            - name: HF_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: llm-forge-secrets
-                  key: hf-token
+              memory: "24Gi"
+              cpu: "4"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            - { name: cache, mountPath: /app/.cache }
+          readinessProbe:
+            httpGet: { path: /health/ready, port: 8000 }
+            initialDelaySeconds: 120
+            periodSeconds: 15
+            failureThreshold: 4
           livenessProbe:
-            httpGet:
-              path: /health
-              port: 8000
+            httpGet: { path: /health/live, port: 8000 }
             initialDelaySeconds: 60
             periodSeconds: 30
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 8000
-            initialDelaySeconds: 30
+          startupProbe:
+            httpGet: { path: /health/ready, port: 8000 }
+            failureThreshold: 40
             periodSeconds: 10
+          lifecycle:
+            preStop:
+              exec: { command: ["sleep", "10"] }
+      terminationGracePeriodSeconds: 60
+      volumes:
+        - { name: tmp, emptyDir: {} }
+        - { name: cache, emptyDir: {} }
