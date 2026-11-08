@@ -1,19 +1,23 @@
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: llm-forge-serve-hpa
-  namespace: llm-forge
+  name: llm-forge
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: llm-forge-serve
+    name: llm-forge
   minReplicas: 1
   maxReplicas: 4
   metrics:
-    - type: Resource
-      resource:
-        name: nvidia_com_gpu_utilization
-        target:
-          type: Utilization
-          averageUtilization: 70
+    - type: Pods
+      pods:
+        metric: { name: vllm_num_requests_waiting }
+        target: { type: AverageValue, averageValue: "5" }
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies: [{ type: Percent, value: 100, periodSeconds: 60 }]
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies: [{ type: Percent, value: 25, periodSeconds: 120 }]
