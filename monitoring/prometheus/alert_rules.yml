@@ -1,0 +1,40 @@
+groups:
+  - name: llm-forge-slo
+    rules:
+      - alert: HighP95Latency
+        expr: histogram_quantile(0.95, rate(llmforge_http_request_duration_seconds_bucket[5m])) > 5
+        for: 5m
+        labels: { severity: warning, team: ml-platform }
+        annotations: { summary: "P95 latency > 5s", runbook_url: "docs/RUNBOOK.md#high-latency" }
+
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(llmforge_http_requests_total{status=~"5.."}[5m]))
+          / sum(rate(llmforge_http_requests_total[5m])) > 0.05
+        for: 5m
+        labels: { severity: critical }
+        annotations: { summary: "Error rate > 5%" }
+
+      - alert: ModelNotReady
+        expr: up{job="llm-forge"} == 0
+        for: 3m
+        labels: { severity: critical }
+        annotations: { summary: "Model not ready for >3m" }
+
+      - alert: CircuitOpen
+        expr: llmforge_circuit_state{name="vllm"} == 2
+        for: 2m
+        labels: { severity: critical }
+        annotations: { summary: "Circuit breaker open" }
+
+      - alert: QuotaBurningFast
+        expr: rate(llmforge_quota_exceeded_total[10m]) > 1
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: "Quota exceeded frequently — possible abuse" }
+
+      - alert: HighSafetyBlockRate
+        expr: rate(llmforge_safety_blocks_total[5m]) > 5
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "Safety blocks elevated" }
