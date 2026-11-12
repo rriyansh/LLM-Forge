@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AlpacaExample",
+  "type": "object",
+  "required": ["instruction", "output"],
+  "properties": {
+    "instruction": { "type": "string", "minLength": 1, "maxLength": 8192 },
+    "input": { "type": "string", "maxLength": 16384 },
+    "output": { "type": "string", "minLength": 1, "maxLength": 16384 },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "source": { "type": "string" },
+        "quality_score": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    }
+  }
+}
