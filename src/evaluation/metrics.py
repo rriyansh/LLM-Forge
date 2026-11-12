@@ -1,9 +1,9 @@
-"""Evaluation metrics: perplexity, ROUGE-L, exact match."""
+"""Core metrics: perplexity, ROUGE-L, exact match."""
 from __future__ import annotations
 
 import math
 import re
-from typing import Iterable
+from collections.abc import Iterable
 
 import torch
 from transformers import PreTrainedModel, PreTrainedTokenizer
@@ -12,8 +12,7 @@ from transformers import PreTrainedModel, PreTrainedTokenizer
 def compute_perplexity(
     model: PreTrainedModel, tokenizer: PreTrainedTokenizer, texts: Iterable[str], max_len: int = 1024
 ) -> float:
-    total_loss = 0.0
-    total_tokens = 0
+    total_loss, total_tokens = 0.0, 0
     model.eval()
     with torch.no_grad():
         for text in texts:
@@ -34,7 +33,6 @@ def rouge_l(pred: str, ref: str) -> float:
     p, r = _tokens(pred), _tokens(ref)
     if not p or not r:
         return 0.0
-    # simple LCS-based ROUGE-L
     dp = [[0] * (len(r) + 1) for _ in range(len(p) + 1)]
     for i in range(1, len(p) + 1):
         for j in range(1, len(r) + 1):
@@ -43,8 +41,7 @@ def rouge_l(pred: str, ref: str) -> float:
             else:
                 dp[i][j] = max(dp[i - 1][j], dp[i][j - 1])
     lcs = dp[-1][-1]
-    prec = lcs / len(p)
-    rec = lcs / len(r)
+    prec, rec = lcs / len(p), lcs / len(r)
     if prec + rec == 0:
         return 0.0
     return 2 * prec * rec / (prec + rec)
