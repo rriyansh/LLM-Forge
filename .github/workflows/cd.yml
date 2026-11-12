@@ -1,4 +1,5 @@
 name: CD
+
 on:
   push:
     tags: ["v*"]
@@ -6,10 +7,13 @@ on:
 permissions:
   contents: read
   packages: write
+  id-token: write
 
 jobs:
-  build-push:
+  build:
     runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.meta.outputs.tags }}
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -18,11 +22,31 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=tag
+            type=sha
       - uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/Dockerfile.serve
           push: true
-          tags: ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-kubectl@v4
+      - run: |
+          echo "${{ secrets.KUBECONFIG }}" > $HOME/.kube/config
+          kubectl set image deploy/llm-forge api=${{ needs.build.outputs.image }} -n llm-forge
+          kubectl rollout status deploy/llm-forge -n llm-forge --timeout=10m
