@@ -1,9 +1,9 @@
-apiVersion: helm.sh/v1
-kind: Chart
-metadata:
-  name: llm-forge
-  description: Helm chart for LLM-Forge vLLM + FastAPI serving
-  type: application
-  version: 0.1.0
-  appVersion: "0.1.0"
-kubeVersion: ">=1.25.0"
+apiVersion: v2
+name: llm-forge
+description: LLM-Forge — production LLM serving
+type: application
+version: 2.0.0
+appVersion: "2.0.0"
+maintainers:
+  - name: LLM-Forge Team
+    email: team@llmforge.dev
