@@ -13,14 +13,7 @@ lora:
   r: 16
   alpha: 32
   dropout: 0.05
-  target_modules:
-    - q_proj
-    - k_proj
-    - v_proj
-    - o_proj
-    - gate_proj
-    - up_proj
-    - down_proj
+  target_modules: ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
 
 training:
   output_dir: "./checkpoints"
@@ -30,6 +23,8 @@ training:
   learning_rate: 2.0e-4
   lr_scheduler_type: "cosine"
   warmup_ratio: 0.05
+  weight_decay: 0.01
+  max_grad_norm: 1.0
   bf16: true
   logging_steps: 10
   save_strategy: "epoch"
@@ -38,7 +33,15 @@ training:
   packing: true
   gradient_checkpointing: true
   optim: "paged_adamw_8bit"
+  group_by_length: true
+
+dpo:
+  beta: 0.1
+  loss_type: "sigmoid"
+  max_prompt_length: 1024
+  max_length: 2048
 
 wandb:
   project: "llm-forge"
   run_name: "llama3-8b-qlora"
+  tags: ["qlora", "llama3", "domain-qa"]
