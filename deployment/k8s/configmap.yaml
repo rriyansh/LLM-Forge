@@ -2,9 +2,17 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: llm-forge-config
+  namespace: llm-forge
 data:
+  ENV: "prod"
+  LOG_LEVEL: "INFO"
   MODEL_ID: "meta-llama/Meta-Llama-3-8B"
+  MERGED_MODEL_PATH: "/models/merged"
   VLLM_MAX_MODEL_LEN: "4096"
   VLLM_GPU_MEMORY_UTILIZATION: "0.85"
-  LOG_LEVEL: "INFO"
+  RATE_LIMIT_PER_MINUTE: "120"
   ENABLE_PII_REDACTION: "true"
+  ENABLE_PROMPT_INJECTION_FILTER: "true"
+  OTEL_ENABLED: "true"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.monitoring:4317"
+  OTEL_SERVICE_NAME: "llm-forge"
