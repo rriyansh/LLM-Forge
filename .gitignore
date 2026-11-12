@@ -1,26 +1,56 @@
+# Python
 __pycache__/
 *.py[cod]
 *.egg-info/
 .venv/
 venv/
-.env
-.env.local
-*.log
-logs/*
-!logs/.gitkeep
-checkpoints/*
-!checkpoints/.gitkeep
-data/raw/*
-!data/raw/.gitkeep
-data/processed/*
-!data/processed/.gitkeep
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .coverage
+coverage.xml
 htmlcov/
-wandb/
-.DS_Store
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# Data
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+data/eval/*
+!data/eval/.gitkeep
+
+# Models
+checkpoints/
+models/
 *.safetensors
 *.bin
 *.pt
+*.gguf
+
+# Logs
+logs/
+*.log
+
+# W&B
+wandb/
+
+# IDE
+.idea/
+.vscode/
+.DS_Store
+
+# Build
+dist/
+build/
+*.whl
+
+# Docker
+.docker/
