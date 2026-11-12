@@ -2,11 +2,13 @@ apiVersion: v1
 kind: Service
 metadata:
   name: llm-forge
+  namespace: llm-forge
+  labels: { app: llm-forge }
 spec:
   type: ClusterIP
   selector: { app: llm-forge }
   ports:
     - port: 80
       targetPort: 8000
-      protocol: TCP
       name: http
+      protocol: TCP
