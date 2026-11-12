@@ -1,16 +1,26 @@
 FROM nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04
 
-ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONPATH=/app
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.10 python3-pip git curl && rm -rf /var/lib/apt/lists/*
+        python3.11 python3.11-venv python3-pip git curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 \
+    && update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1
 
 WORKDIR /app
-COPY requirements.txt .
+COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY src/ ./src/
+COPY configs/ ./configs/
+COPY scripts/ ./scripts/
+
 RUN useradd -m -u 10001 app && chown -R app:app /app
 USER app
 
-ENV PYTHONPATH=/app
 ENTRYPOINT ["python", "-m", "src.models.qlora_trainer"]
