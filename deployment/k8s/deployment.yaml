@@ -2,23 +2,34 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: llm-forge
+  namespace: llm-forge
   labels: { app: llm-forge }
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 0, maxUnavailable: 1 }
   selector:
     matchLabels: { app: llm-forge }
   template:
     metadata:
       labels: { app: llm-forge }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
     spec:
+      serviceAccountName: llm-forge
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
+        runAsGroup: 10001
         fsGroup: 10001
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: api
-          image: ghcr.io/yourorg/llm-forge:1.0.0
+          image: ghcr.io/yourorg/llm-forge:2.0.0
           imagePullPolicy: IfNotPresent
           ports: [{ containerPort: 8000, name: http }]
           envFrom:
@@ -39,6 +50,7 @@ spec:
           volumeMounts:
             - { name: tmp, mountPath: /tmp }
             - { name: cache, mountPath: /app/.cache }
+            - { name: models, mountPath: /models, readOnly: true }
           readinessProbe:
             httpGet: { path: /health/ready, port: 8000 }
             initialDelaySeconds: 120
@@ -54,8 +66,10 @@ spec:
             periodSeconds: 10
           lifecycle:
             preStop:
-              exec: { command: ["sleep", "10"] }
-      terminationGracePeriodSeconds: 60
+              exec: { command: ["sh", "-c", "sleep 15"] }
+      terminationGracePeriodSeconds: 90
       volumes:
         - { name: tmp, emptyDir: {} }
         - { name: cache, emptyDir: {} }
+        - name: models
+          persistentVolumeClaim: { claimName: llm-forge-models }
