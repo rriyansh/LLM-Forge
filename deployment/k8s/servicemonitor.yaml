@@ -1,0 +1,14 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: llm-forge
+  namespace: llm-forge
+  labels: { release: kube-prometheus-stack }
+spec:
+  selector:
+    matchLabels: { app: llm-forge }
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
