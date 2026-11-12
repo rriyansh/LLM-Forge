@@ -1,12 +1,47 @@
 version: "3.9"
+
 services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes: [redis-data:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: llmforge
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: llmforge
+    volumes: [pg-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U llmforge"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
   api:
     build:
       context: ..
       dockerfile: docker/Dockerfile.serve
-    image: llm-forge:serve
+    image: llm-forge:latest
     env_file: ../.env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      CACHE_REDIS_URL: redis://redis:6379/1
+      DATABASE_URL: postgresql+asyncpg://llmforge:password@postgres:5432/llmforge
     ports: ["8000:8000"]
+    depends_on:
+      redis: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+    read_only: true
+    tmpfs: ["/tmp"]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
     deploy:
       resources:
         reservations:
@@ -14,13 +49,7 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-    healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8000/health/ready"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 180s
-    restart: unless-stopped
-    read_only: true
-    tmpfs: ["/tmp"]
-    security_opt: ["no-new-privileges:true"]
+
+volumes:
+  redis-data:
+  pg-data:
