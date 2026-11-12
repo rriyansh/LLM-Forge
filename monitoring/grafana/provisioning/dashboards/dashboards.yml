@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: llm-forge
+    folder: LLM-Forge
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards
