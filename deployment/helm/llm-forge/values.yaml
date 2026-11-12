@@ -1,40 +1,53 @@
 replicaCount: 1
-
 image:
-  repository: ghcr.io/rriyansh/llm-forge-serve
-  tag: latest
+  repository: ghcr.io/yourorg/llm-forge
+  tag: "2.0.0"
   pullPolicy: IfNotPresent
 
+resources:
+  limits: { nvidia.com/gpu: 1, memory: 32Gi, cpu: "8" }
+  requests: { memory: 24Gi, cpu: "4" }
+
 service:
-  type: LoadBalancer
+  type: ClusterIP
   port: 80
   targetPort: 8000
 
-resources:
-  limits:
-    nvidia.com/gpu: 1
-    memory: 32Gi
-  requests:
-    nvidia.com/gpu: 1
-    memory: 16Gi
+ingress:
+  enabled: true
+  className: nginx
+  host: api.llmforge.dev
+  tlsSecret: llm-forge-tls
 
 autoscaling:
   enabled: true
   minReplicas: 1
   maxReplicas: 4
-  averageUtilization: 70
+  targetQueueLength: 5
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+networkPolicy:
+  enabled: true
 
 env:
-  apiKey:
-    valueFrom:
-      secretKeyRef:
-        name: llm-forge-secrets
-        key: api-key
-  hfToken:
-    valueFrom:
-      secretKeyRef:
-        name: llm-forge-secrets
-        key: hf-token
+  ENV: prod
+  LOG_LEVEL: INFO
+  MODEL_ID: meta-llama/Meta-Llama-3-8B
+  VLLM_MAX_MODEL_LEN: "4096"
+  VLLM_GPU_MEMORY_UTILIZATION: "0.85"
 
-ingress:
-  enabled: false
+secrets:
+  existingSecret: llm-forge-secrets
+
+persistence:
+  enabled: true
+  models:
+    size: 100Gi
+    storageClass: ""
+    accessMode: ReadOnlyMany
+
+serviceMonitor:
+  enabled: true
