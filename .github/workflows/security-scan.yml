@@ -1,0 +1,20 @@
+name: Security Scan
+
+on:
+  schedule: [{ cron: "0 3 * * *" }]
+  push: { branches: [main] }
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install pip-audit bandit
+      - run: pip-audit -r requirements.txt --strict
+      - run: bandit -r src -ll -f json -o bandit.json || true
+      - uses: actions/upload-artifact@v4
+        with: { name: bandit-report, path: bandit.json }
+      - uses: gitleaks/gitleaks-action@v2
+        env: { GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} }
