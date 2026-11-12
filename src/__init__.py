@@ -1,3 +1,4 @@
-"""LLM-Forge: production-grade LLM fine-tuning and serving pipeline."""
+"""LLM-Forge — production-grade, security-hardened LLM pipeline."""
+from src.version import __version__
 
-__version__ = "1.0.0"
+__all__ = ["__version__"]
