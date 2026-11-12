@@ -1,9 +1,8 @@
-"""vLLM async engine wrapper."""
+"""vLLM AsyncLLM wrapper with concurrency limiter and warmup."""
 from __future__ import annotations
 
 import asyncio
 import uuid
-from typing import AsyncIterator
 
 from vllm import SamplingParams
 from vllm.engine.arg_utils import AsyncEngineArgs
@@ -16,21 +15,21 @@ log = get_logger(__name__)
 
 
 class LLMEngine:
-    """Thread-safe-ish wrapper around vLLM AsyncLLM."""
-
     def __init__(self, cfg: FullServingConfig) -> None:
         self._cfg = cfg
         self._engine: AsyncLLM | None = None
         self._lock = asyncio.Lock()
+        self._sem = asyncio.Semaphore(cfg.limits.max_concurrent_requests)
+        self._model_name: str = ""
 
     async def start(self, model_path: str) -> None:
         async with self._lock:
             if self._engine is not None:
                 return
-            model_path = model_path or get_env("MODEL_ID", required=True)
-            log.info("engine_starting", model=model_path)
+            self._model_name = model_path or get_env("MODEL_ID", required=True)
+            log.info("engine_starting", model=self._model_name)
             args = AsyncEngineArgs(
-                model=model_path,
+                model=self._model_name,
                 max_model_len=self._cfg.engine.max_model_len,
                 gpu_memory_utilization=self._cfg.engine.gpu_memory_utilization,
                 tensor_parallel_size=self._cfg.engine.tensor_parallel_size,
@@ -39,6 +38,7 @@ class LLMEngine:
                 trust_remote_code=self._cfg.engine.trust_remote_code,
                 enable_prefix_caching=self._cfg.engine.enable_prefix_caching,
                 enable_chunked_prefill=self._cfg.engine.enable_chunked_prefill,
+                disable_log_requests=self._cfg.engine.disable_log_requests,
             )
             self._engine = AsyncLLM.from_engine_args(args)
             log.info("engine_ready")
@@ -52,31 +52,25 @@ class LLMEngine:
     def ready(self) -> bool:
         return self._engine is not None
 
+    @property
+    def model_name(self) -> str:
+        return self._model_name
+
     async def generate(
-        self,
-        prompt: str,
-        *,
-        temperature: float,
-        top_p: float,
-        max_tokens: int,
-        stop: list[str],
+        self, prompt: str, *, temperature: float, top_p: float, max_tokens: int, stop: list[str]
     ) -> tuple[str, int, int, str, str]:
         if self._engine is None:
             raise RuntimeError("Engine not initialized")
-
         sampling = SamplingParams(
-            temperature=temperature,
-            top_p=top_p,
-            max_tokens=max_tokens,
-            stop=stop or None,
+            temperature=temperature, top_p=top_p, max_tokens=max_tokens, stop=stop or None
         )
         request_id = f"req-{uuid.uuid4().hex}"
-        final = None
-        async for out in self._engine.generate(prompt, sampling, request_id):
-            final = out
+        async with self._sem:
+            final = None
+            async for out in self._engine.generate(prompt, sampling, request_id):
+                final = out
         if final is None or not final.outputs:
             return "", 0, 0, "error", request_id
-
         o = final.outputs[0]
         return (
             o.text,
@@ -87,5 +81,4 @@ class LLMEngine:
         )
 
 
-# Module-level singleton (initialized by app lifespan)
-engine = LLMEngine
+# Type used for DI; actual instance lives on app.state
