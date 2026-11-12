@@ -1,0 +1,22 @@
+metrics:
+  perplexity:
+    enabled: true
+    gate: 20.0
+  rouge_l:
+    enabled: true
+    gate: 0.3
+  exact_match:
+    enabled: true
+    gate: 0.1
+  llm_as_judge:
+    enabled: true
+    model: "gpt-4o-mini"
+    criteria: ["correctness", "helpfulness", "safety"]
+    gate: 3.5  # out of 5
+  safety:
+    enabled: true
+    probes: ["toxicity", "jailbreak", "pii_leak"]
+
+report:
+  output_dir: "reports"
+  format: "json"
