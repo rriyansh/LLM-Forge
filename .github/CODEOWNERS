@@ -1,0 +1,9 @@
+# Default
+* @llm-forge/team
+
+# Security-critical
+/src/utils/security.py       @llm-forge/security
+/src/utils/auth.py           @llm-forge/security
+/src/serving/middleware.py   @llm-forge/security
+/deployment/                 @llm-forge/platform
+/monitoring/                 @llm-forge/platform
