@@ -1,0 +1,9 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: llm-forge
+  namespace: llm-forge
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: { app: llm-forge }
