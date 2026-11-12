@@ -1,16 +1,24 @@
 name: CI
+
 on:
-  push: { branches: [main] }
-  pull_request: { branches: [main] }
+  push: { branches: [main, develop] }
+  pull_request: { branches: [main, develop] }
+
+permissions:
+  contents: read
 
 jobs:
-  quality:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
       - uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
+        with: { python-version: "3.11", cache: pip }
       - run: pip install -r requirements-dev.txt
-      - run: ruff check src tests
-      - run: black --check src tests
-      - run: pytest tests -v --cov=src
+      - run: ruff check src tests scripts
+      - run: black --check src tests scripts
+      - run: pytest tests -v --cov=src --cov-report=xml --cov-fail-under=70 --ignore=tests/integration --ignore=tests/load
+      - uses: codecov/codecov-action@v4
+        if: always()
+        with: { files: ./coverage.xml }
